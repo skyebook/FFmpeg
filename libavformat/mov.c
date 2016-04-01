@@ -3889,6 +3889,10 @@ static int mov_read_uuid(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         0xbe, 0x7a, 0xcf, 0xcb, 0x97, 0xa9, 0x42, 0xe8,
         0x9c, 0x71, 0x99, 0x94, 0x91, 0xe3, 0xaf, 0xac
     };
+    static const uint8_t uuid_spherical_video[] = {
+        0xff, 0xcc, 0x82, 0x63, 0xf8, 0x55, 0x4a, 0x93,
+        0x88, 0x14, 0x58, 0x7a, 0x02, 0x52, 0x1f, 0xdd
+    };
 
     if (atom.size < sizeof(uuid) || atom.size == INT64_MAX)
         return AVERROR_INVALIDDATA;
@@ -3963,6 +3967,26 @@ static int mov_read_uuid(MOVContext *c, AVIOContext *pb, MOVAtom atom)
             buffer[len] = '\0';
             av_dict_set(&c->fc->metadata, "xmp", buffer, 0);
         }
+        av_free(buffer);
+    } else if (!memcmp(uuid, uuid_spherical_video, sizeof(uuid))) {
+        uint8_t *buffer;
+        size_t len = atom.size - sizeof(uuid);
+        
+        buffer = av_mallocz(len + 1);
+        if (!buffer) {
+            return AVERROR(ENOMEM);
+        }
+        ret = avio_read(pb, buffer, len);
+        if (ret < 0) {
+            av_free(buffer);
+            return ret;
+        } else if (ret != len) {
+            av_free(buffer);
+            return AVERROR_INVALIDDATA;
+        }
+        
+        av_dict_set(&c->fc->metadata, "sphericalvideo", buffer, 0);
+        
         av_free(buffer);
     }
     return 0;
