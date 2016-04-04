@@ -69,6 +69,7 @@ static const AVOption options[] = {
     { "global_sidx", "Write a global sidx index at the start of the file", 0, AV_OPT_TYPE_CONST, {.i64 = FF_MOV_FLAG_GLOBAL_SIDX}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM, "movflags" },
     { "write_colr", "Write colr atom (Experimental, may be renamed or changed, do not use from scripts)", 0, AV_OPT_TYPE_CONST, {.i64 = FF_MOV_FLAG_WRITE_COLR}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM, "movflags" },
     { "write_gama", "Write deprecated gama atom", 0, AV_OPT_TYPE_CONST, {.i64 = FF_MOV_FLAG_WRITE_GAMA}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM, "movflags" },
+    { "write_spherical", "Write spherical video metadata (Experimental, per Google's Spherical Video RFC)", 0, AV_OPT_TYPE_CONST, {.i64 = FF_MOV_FLAG_WRITE_SPHERICAL}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM, "movflags" },
     FF_RTP_FLAG_OPTS(MOVMuxContext, rtp_flags),
     { "skip_iods", "Skip writing iods atom.", offsetof(MOVMuxContext, iods_skip), AV_OPT_TYPE_BOOL, {.i64 = 1}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
     { "iods_audio_profile", "iods audio profile atom.", offsetof(MOVMuxContext, iods_audio_profile), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 255, AV_OPT_FLAG_ENCODING_PARAM},
@@ -1638,6 +1639,33 @@ static int mov_write_colr_tag(AVIOContext *pb, MOVTrack *track)
     }
 }
 
+static int mov_write_spherical_tag(AVIOContext *pb)
+{
+    int64_t pos = avio_tell(pb);
+    static const uint8_t uuid_spherical_video[] = {
+        0xff, 0xcc, 0x82, 0x63, 0xf8, 0x55, 0x4a, 0x93,
+        0x88, 0x14, 0x58, 0x7a, 0x02, 0x52, 0x1f, 0xdd
+    };
+
+    avio_wb32(pb, 0);
+    ffio_wfourcc(pb, "uuid");
+    avio_write(pb, uuid_spherical_video, sizeof(uuid_spherical_video));
+    avio_wb32(pb, 0);
+
+    avio_printf(pb, "<rdf:SphericalVideo");
+    avio_printf(pb, " xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"");
+    avio_printf(pb, " xmlns:GSpherical=\"http://ns.google.com/videos/1.0/spherical/\">\n");
+
+    avio_printf(pb, "<GSpherical:Spherical>true</GSpherical:Spherical>\n");
+    avio_printf(pb, "<GSpherical:Stitched>true</GSpherical:Stitched>\n");
+    avio_printf(pb, "<GSpherical:StitchingSoftware>Spherical Metadata Tool</GSpherical:StitchingSoftware>\n");
+    avio_printf(pb, "<GSpherical:ProjectionType>equirectangular</GSpherical:ProjectionType>\n");
+
+    avio_printf(pb, "</rdf:SphericalVideo>\n");
+
+    return update_size(pb, pos);
+}
+
 static void find_compressor(char * compressor_name, int len, MOVTrack *track)
 {
     AVDictionaryEntry *encoder;
@@ -2665,6 +2693,9 @@ static int mov_write_trak_tag(AVIOContext *pb, MOVMuxContext *mov,
         if (is_clcp_track(track) && st->sample_aspect_ratio.num) {
             mov_write_tapt_tag(pb, track);
         }
+    }
+    if (mov->flags & FF_MOV_FLAG_WRITE_SPHERICAL) {
+        mov_write_spherical_tag(pb);
     }
     mov_write_track_udta_tag(pb, mov, st);
     track->entry = entry_backup;
