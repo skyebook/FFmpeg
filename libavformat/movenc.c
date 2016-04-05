@@ -2695,7 +2695,9 @@ static int mov_write_trak_tag(AVIOContext *pb, MOVMuxContext *mov,
         }
     }
     if (mov->flags & FF_MOV_FLAG_WRITE_SPHERICAL) {
-        mov_write_spherical_tag(pb);
+        if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
+            mov_write_spherical_tag(pb);
+        }
     }
     mov_write_track_udta_tag(pb, mov, st);
     track->entry = entry_backup;
