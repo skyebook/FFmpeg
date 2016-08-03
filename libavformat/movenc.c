@@ -1639,9 +1639,10 @@ static int mov_write_colr_tag(AVIOContext *pb, MOVTrack *track)
     }
 }
 
-static int mov_write_spherical_tag(AVIOContext *pb)
+static int mov_write_spherical_tag(AVIOContext *pb, AVStream *st)
 {
     int64_t pos = avio_tell(pb);
+
     static const uint8_t uuid_spherical_video[] = {
         0xff, 0xcc, 0x82, 0x63, 0xf8, 0x55, 0x4a, 0x93,
         0x88, 0x14, 0x58, 0x7a, 0x02, 0x52, 0x1f, 0xdd
@@ -1650,18 +1651,38 @@ static int mov_write_spherical_tag(AVIOContext *pb)
     avio_wb32(pb, 0);
     ffio_wfourcc(pb, "uuid");
     avio_write(pb, uuid_spherical_video, sizeof(uuid_spherical_video));
-    avio_wb32(pb, 0);
 
+    avio_printf(pb, "<?xml version=\"1.0\"?>");
     avio_printf(pb, "<rdf:SphericalVideo");
     avio_printf(pb, " xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"");
-    avio_printf(pb, " xmlns:GSpherical=\"http://ns.google.com/videos/1.0/spherical/\">\n");
+    avio_printf(pb, " xmlns:GSpherical=\"http://ns.google.com/videos/1.0/spherical/\">");
 
-    avio_printf(pb, "<GSpherical:Spherical>true</GSpherical:Spherical>\n");
-    avio_printf(pb, "<GSpherical:Stitched>true</GSpherical:Stitched>\n");
-    avio_printf(pb, "<GSpherical:StitchingSoftware>Spherical Metadata Tool</GSpherical:StitchingSoftware>\n");
-    avio_printf(pb, "<GSpherical:ProjectionType>equirectangular</GSpherical:ProjectionType>\n");
+    avio_printf(pb, "<GSpherical:Spherical>true</GSpherical:Spherical>");
+    avio_printf(pb, "<GSpherical:Stitched>true</GSpherical:Stitched>");
+    avio_printf(pb, "<GSpherical:StitchingSoftware>Spherical Metadata Tool</GSpherical:StitchingSoftware>");
+    avio_printf(pb, "<GSpherical:ProjectionType>equirectangular</GSpherical:ProjectionType>");
 
-    avio_printf(pb, "</rdf:SphericalVideo>\n");
+    AVDictionaryEntry *t;
+    if (t = av_dict_get(st->metadata, "initialViewHeadingDegrees", NULL, 0)) {
+        char* initial_heading_degrees = av_asprintf("<GSpherical:InitialViewHeadingDegrees>%s</GSpherical:InitialViewHeadingDegrees>", t->value);
+        avio_printf(pb, initial_heading_degrees);
+        av_free(initial_heading_degrees);
+    }
+
+    if (t = av_dict_get(st->metadata, "initialViewPitchDegrees", NULL, 0)) {
+        char* initial_pitch_degrees = av_asprintf("<GSpherical:InitialViewPitchDegrees>%s</GSpherical:InitialViewPitchDegrees>", t->value);
+        avio_printf(pb, initial_pitch_degrees);
+        av_free(initial_pitch_degrees);
+    }
+
+    
+    if (t = av_dict_get(st->metadata, "initialViewRollDegrees", NULL, 0)) {
+        char* initial_roll_degrees = av_asprintf("<GSpherical:InitialViewRollDegrees>%s</GSpherical:InitialViewRollDegrees>", t->value);
+        avio_printf(pb, initial_roll_degrees);
+        av_free(initial_roll_degrees);
+    }
+
+    avio_printf(pb, "</rdf:SphericalVideo>");
 
     return update_size(pb, pos);
 }
@@ -2696,7 +2717,7 @@ static int mov_write_trak_tag(AVIOContext *pb, MOVMuxContext *mov,
     }
     if (mov->flags & FF_MOV_FLAG_WRITE_SPHERICAL) {
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
-            mov_write_spherical_tag(pb);
+            mov_write_spherical_tag(pb, st);
         }
     }
     mov_write_track_udta_tag(pb, mov, st);
